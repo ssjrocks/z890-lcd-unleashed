@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.ssjrocks.Z890LcdUnleashed</id>
+  <name>Z890 LCD Unleashed</name>
+  <summary>Control the ROG MAXIMUS Z890 EXTREME motherboard LCD</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>Linux replacement for the Armoury Crate LCD page: built-in wallpapers and animations,
+    your own pictures, slideshows, a fully configurable hardware monitor fed by Linux
+    sensors, brightness, sleep-mode display and a temperature warning.</p>
+    <p>Not affiliated with or endorsed by ASUS.</p>
+  </description>
+  <launchable type="desktop-id">io.github.ssjrocks.Z890LcdUnleashed.desktop</launchable>
+  <url type="homepage">https://github.com/ssjrocks/z890-lcd-unleashed</url>
+  <developer id="io.github.ssjrocks"><name>ssjrocks</name></developer>
+  <provides><modalias>usb:v0B05p1BD4*</modalias></provides>
+  <releases><release version="0.1.0" date="2026-10-04"/></releases>
+  <content_rating type="oars-1.1"/>
+</component>

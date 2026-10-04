@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=io.github.ssjrocks.Z890Lcd
+Exec=@BINDIR@/z890-lcd-service
+SystemdService=z890-lcd.service

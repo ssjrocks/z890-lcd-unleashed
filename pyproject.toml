@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "z890-lcd-unleashed"
+dynamic = ["version"]
+description = "Control the ROG MAXIMUS Z890 EXTREME motherboard LCD on Linux"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.10"
+# PyGObject + GTK 4 + libadwaita come from the distro (python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1)
+dependencies = ["pyusb>=1.2", "Pillow>=9"]
+classifiers = ["Operating System :: POSIX :: Linux", "Environment :: X11 Applications :: GTK",
+               "Topic :: System :: Hardware"]
+
+[project.urls]
+Homepage = "https://github.com/ssjrocks/z890-lcd-unleashed"
+
+[project.scripts]
+z890-lcd = "z890lcd.cli:main"
+z890-lcd-service = "z890lcd.service:main"
+
+[project.gui-scripts]
+z890-lcd-gui = "z890lcd.gui:main"
+
+[tool.setuptools]
+packages = ["z890lcd", "z890lcd.gui"]
+
+[tool.setuptools.dynamic]
+version = {attr = "z890lcd.__version__"}

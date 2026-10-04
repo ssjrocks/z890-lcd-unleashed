@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Z890 LCD Unleashed
+GenericName=Motherboard LCD Control
+Comment=Control the ROG MAXIMUS Z890 EXTREME motherboard LCD
+Exec=z890-lcd-gui
+Icon=io.github.ssjrocks.Z890LcdUnleashed
+Terminal=false
+Categories=Settings;HardwareSettings;System;GTK;
+Keywords=ROG;ASUS;LCD;Armoury;Crate;motherboard;screen;hardware;monitor;
+StartupNotify=true
