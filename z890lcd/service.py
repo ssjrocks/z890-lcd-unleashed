@@ -1,10 +1,5 @@
-"""Background service: owns the LCD, keeps dynamic content running, serves a D-Bus API.
-
-Bus name  io.github.ssjrocks.Z890Lcd   (session bus)
-Object    /io/github/ssjrocks/Z890Lcd
-Interface io.github.ssjrocks.Z890Lcd1  - methods exchange JSON strings to keep the API small.
-"""
-import json
+"""Background service: owns the LCD, keeps dynamic content running, serves the API in ipc.py
+(D-Bus on Linux, a local socket on Windows)."""
 import logging
 import os
 import random
@@ -16,32 +11,9 @@ import gi
 gi.require_version('Gio', '2.0')
 from gi.repository import Gio, GLib  # noqa: E402
 
-from . import __version__, config, imaging  # noqa: E402
+from . import __version__, config, imaging, ipc  # noqa: E402
 from .protocol import JPEG_SLOTS, LCD, DeviceNotFound, LCDError  # noqa: E402
 from .sensors import SensorHub  # noqa: E402
-
-BUS_NAME = 'io.github.ssjrocks.Z890Lcd'
-OBJECT_PATH = '/io/github/ssjrocks/Z890Lcd'
-INTERFACE = 'io.github.ssjrocks.Z890Lcd1'
-
-INTROSPECTION = f"""
-<node>
-  <interface name="{INTERFACE}">
-    <method name="GetState"><arg type="s" direction="out"/></method>
-    <method name="SetConfig"><arg type="s" name="changes" direction="in"/><arg type="s" direction="out"/></method>
-    <method name="UploadImage">
-      <arg type="s" name="path" direction="in"/><arg type="s" name="options" direction="in"/>
-      <arg type="i" name="slot" direction="out"/>
-    </method>
-    <method name="DeleteImage"><arg type="i" name="slot" direction="in"/></method>
-    <method name="ListSources"><arg type="s" direction="out"/></method>
-    <method name="PreviewRows"><arg type="s" name="rows" direction="in"/><arg type="s" direction="out"/></method>
-    <method name="Reconnect"><arg type="s" direction="out"/></method>
-    <signal name="StateChanged"><arg type="s"/></signal>
-    <signal name="UploadProgress"><arg type="i" name="slot"/><arg type="d" name="fraction"/></signal>
-  </interface>
-</node>
-"""
 
 POWER_KEYS = ('display_on', 'brightness', 'standby_on', 'standby_wallpaper')
 MODE_KEYS = ('mode', 'preset', 'image_slot', 'slideshow', 'hwmon')
@@ -63,7 +35,7 @@ class Service:
         self._warn_timer = 0
         self._reconnect_timer = 0
         self._slide_pos = 0
-        self._conn = None
+        self._frontend = None
         os.makedirs(config.IMAGE_DIR, exist_ok=True)
 
     # ------------------------------------------------------------------ device lifecycle
@@ -267,7 +239,7 @@ class Service:
         self._stop_mode_timer()  # don't interleave stats updates with the upload
 
         def progress(frac):
-            self._emit('UploadProgress', GLib.Variant('(id)', (slot, frac)))
+            self._emit('UploadProgress', [slot, frac])
             ctx = GLib.MainContext.default()
             while ctx.pending():  # let the signal go out during the blocking upload
                 ctx.iteration(False)
@@ -336,46 +308,41 @@ class Service:
             'image_dir': config.IMAGE_DIR,
         }
 
-    def _emit(self, name, params):
-        if self._conn:
-            self._conn.emit_signal(None, OBJECT_PATH, INTERFACE, name, params)
+    def _emit(self, name, args):
+        if self._frontend:
+            self._frontend.emit(name, args)
 
     def _emit_state(self):
-        self._emit('StateChanged', GLib.Variant('(s)', (json.dumps(self.state()),)))
+        self._emit('StateChanged', [self.state()])
 
-    def _on_call(self, conn, sender, path, iface, method, params, invocation):
+    def dispatch(self, method, args):
+        """Every API call from the GUI/CLI ends up here (see ipc.py)."""
         try:
             if method == 'GetState':
-                res = GLib.Variant('(s)', (json.dumps(self.state()),))
-            elif method == 'SetConfig':
-                self.set_config(json.loads(params.unpack()[0]))
-                res = GLib.Variant('(s)', (json.dumps(self.state()),))
-            elif method == 'UploadImage':
-                p, opts = params.unpack()
-                res = GLib.Variant('(i)', (self.upload(p, json.loads(opts or '{}')),))
-            elif method == 'DeleteImage':
-                self.delete(params.unpack()[0])
-                res = None
-            elif method == 'ListSources':
+                return self.state()
+            if method == 'SetConfig':
+                self.set_config(args[0])
+                return self.state()
+            if method == 'UploadImage':
+                return self.upload(args[0], args[1] if len(args) > 1 else {})
+            if method == 'DeleteImage':
+                self.delete(int(args[0]))
+                return None
+            if method == 'ListSources':
                 self.sensors.discover()
-                res = GLib.Variant('(s)', (json.dumps(self.sensors.list()),))
-            elif method == 'PreviewRows':
-                rows = json.loads(params.unpack()[0])
-                res = GLib.Variant('(s)', (json.dumps(self.format_rows(rows, 1)),))
-            elif method == 'Reconnect':
+                return self.sensors.list()
+            if method == 'PreviewRows':
+                return self.format_rows(args[0], 1)
+            if method == 'Reconnect':
                 self.connect()
-                res = GLib.Variant('(s)', (json.dumps(self.state()),))
-            else:
-                raise LCDError(f'unknown method {method}')
-            invocation.return_value(res)
-        except Exception as e:  # report every failure to the caller instead of crashing the service
-            log.exception('%s failed', method) if not isinstance(e, LCDError) else log.warning('%s: %s', method, e)
-            invocation.return_dbus_error(f'{BUS_NAME}.Error', str(e))
-
-    def _on_bus(self, conn, name):
-        self._conn = conn
-        node = Gio.DBusNodeInfo.new_for_xml(INTROSPECTION)
-        conn.register_object(OBJECT_PATH, node.interfaces[0], self._on_call, None, None)
+                return self.state()
+            raise LCDError(f'unknown method {method}')
+        except LCDError as e:
+            log.warning('%s: %s', method, e)
+            raise
+        except Exception:
+            log.exception('%s failed', method)
+            raise
 
     def _on_sleep(self, conn, sender, path, iface, signal_name, params):
         going_to_sleep = params.unpack()[0]
@@ -385,26 +352,30 @@ class Service:
 
     def run(self):
         loop = GLib.MainLoop()
-        owner = Gio.bus_own_name(Gio.BusType.SESSION, BUS_NAME, Gio.BusNameOwnerFlags.NONE,
-                                 self._on_bus, None,
-                                 lambda *a: (log.error('another z890-lcd service is already running'), loop.quit()))
-        try:
-            system = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
-            system.signal_subscribe('org.freedesktop.login1', 'org.freedesktop.login1.Manager', 'PrepareForSleep',
-                                    '/org/freedesktop/login1', None, Gio.DBusSignalFlags.NONE, self._on_sleep)
-        except GLib.Error:
-            pass
+
+        def lost():
+            log.error('another z890-lcd service is already running')
+            loop.quit()
+        self._frontend = ipc.serve(self.dispatch, lost)
+        if sys.platform.startswith('linux'):
+            try:
+                system = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+                system.signal_subscribe('org.freedesktop.login1', 'org.freedesktop.login1.Manager',
+                                        'PrepareForSleep', '/org/freedesktop/login1', None,
+                                        Gio.DBusSignalFlags.NONE, self._on_sleep)
+            except GLib.Error:
+                pass
+            try:
+                gi.require_version('GLibUnix', '2.0')
+                from gi.repository import GLibUnix
+                add_signal = GLibUnix.signal_add
+            except (ImportError, ValueError):
+                add_signal = GLib.unix_signal_add
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                add_signal(GLib.PRIORITY_DEFAULT, sig, loop.quit)
         self.connect()
-        try:
-            gi.require_version('GLibUnix', '2.0')
-            from gi.repository import GLibUnix
-            add_signal = GLibUnix.signal_add
-        except (ImportError, ValueError):
-            add_signal = GLib.unix_signal_add
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            add_signal(GLib.PRIORITY_DEFAULT, sig, loop.quit)
         loop.run()
-        Gio.bus_unown_name(owner)
+        self._frontend.close()
         self._stop_mode_timer()
         self._close()
 
@@ -412,7 +383,12 @@ class Service:
 def main():
     import warnings
     warnings.filterwarnings('ignore', category=DeprecationWarning)  # register_object: still the simplest API
-    logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s', stream=sys.stderr)
+    if sys.stderr is None or os.name == 'nt':  # windowed Windows build: no console, log to a file
+        os.makedirs(config.DATA_DIR, exist_ok=True)
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s',
+                            filename=os.path.join(config.DATA_DIR, 'service.log'))
+    else:
+        logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s', stream=sys.stderr)
     Service().run()
 
 

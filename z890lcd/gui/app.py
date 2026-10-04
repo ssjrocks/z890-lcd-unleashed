@@ -1,7 +1,5 @@
 """Main window."""
-import json
 import os
-import subprocess
 import sys
 
 import gi
@@ -13,7 +11,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 from .. import APP_ID, __version__  # noqa: E402
 from ..client import Client, ServiceError  # noqa: E402
 from ..protocol import JPEG_SLOTS, PRESETS, TYPE_ANIM  # noqa: E402
-from .. import assets  # noqa: E402
+from .. import assets, autostart  # noqa: E402
 from .common import AnimatedPicture, debounce, install_css, source_label, string_dropdown  # noqa: E402
 from .stats import StatsPage  # noqa: E402
 from .upload import UploadDialog  # noqa: E402
@@ -208,7 +206,7 @@ class ImagesPage(Adw.PreferencesPage):
         d.add_response('cancel', 'Cancel')
         d.add_response('delete', 'Delete')
         d.set_response_appearance('delete', Adw.ResponseAppearance.DESTRUCTIVE)
-        d.connect('response', lambda d, r: r == 'delete' and self.win.call('DeleteImage', '(i)', (slot,),
+        d.connect('response', lambda d, r: r == 'delete' and self.win.call('DeleteImage', [slot],
                                                                            f'Deleted slot {slot + 1}'))
         d.present(self.win)
 
@@ -274,31 +272,22 @@ class SettingsPage(Adw.PreferencesPage):
         self.fw = Adw.ActionRow(title='Firmware')
         g.add(self.fw)
         rc = Adw.ButtonRow(title='Reconnect', start_icon_name='view-refresh-symbolic')
-        rc.connect('activated', lambda *a: win.call('Reconnect', None, (), 'Reconnected'))
+        rc.connect('activated', lambda *a: win.call('Reconnect', [], 'Reconnected'))
         g.add(rc)
         self.add(g)
 
         g = Adw.PreferencesGroup(title='Background service',
                                  description='Keeps stats and slideshows running when this window is closed.')
         self.autostart = Adw.SwitchRow(title='Start at login')
-        self.autostart.set_active(self._service_enabled())
+        self.autostart.set_active(autostart.is_enabled())
         self.autostart.connect('notify::active', self._toggle_autostart)
         g.add(self.autostart)
         self.add(g)
 
-    @staticmethod
-    def _service_enabled():
-        try:
-            return subprocess.run(['systemctl', '--user', 'is-enabled', 'z890-lcd.service'],
-                                  capture_output=True, text=True).stdout.strip() == 'enabled'
-        except OSError:
-            return False
-
     def _toggle_autostart(self, row, *a):
-        verb = 'enable' if row.get_active() else 'disable'
-        r = subprocess.run(['systemctl', '--user', verb, 'z890-lcd.service'], capture_output=True, text=True)
-        if r.returncode:
-            self.win.toast(f'Could not {verb} the service: {r.stderr.strip()}')
+        err = autostart.set_enabled(row.get_active())
+        if err:
+            self.win.toast(f'Could not change autostart: {err}')
 
     def load_sources(self, sources):
         self._temp_sources = [s for s in sources if s['category'] == 'Temperature']
@@ -436,7 +425,7 @@ class Window(Adw.ApplicationWindow):
 
     def _on_signal(self, name, args):
         if name == 'StateChanged':
-            self.apply_state(json.loads(args[0]))
+            self.apply_state(args[0])
 
     def apply_state(self, st):
         self.state = st
@@ -456,9 +445,9 @@ class Window(Adw.ApplicationWindow):
             self.loading = False
 
     def set_config(self, **changes):
-        self.call('SetConfig', '(s)', (json.dumps(changes),))
+        self.call('SetConfig', [changes])
 
-    def call(self, method, sig, args, ok_msg=None):
+    def call(self, method, args, ok_msg=None):
         if not self.client:
             self.toast('Background service unavailable')
             return
@@ -468,7 +457,7 @@ class Window(Adw.ApplicationWindow):
                 self.toast(err)
             elif ok_msg:
                 self.toast(ok_msg)
-        self.client.call_async(method, sig, args, done)
+        self.client.call_async(method, args, done)
 
     def toast(self, text):
         self.toasts.add_toast(Adw.Toast(title=GLib.markup_escape_text(text), timeout=4))

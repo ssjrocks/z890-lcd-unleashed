@@ -1,7 +1,7 @@
 # Z890 LCD Unleashed
 
-Control the 5" LCD on the **ASUS ROG MAXIMUS Z890 EXTREME** motherboard from Linux – no Armoury Crate,
-no Windows.
+Control the 5" LCD on the **ASUS ROG MAXIMUS Z890 EXTREME** motherboard from Linux (and Windows) – no
+Armoury Crate needed.
 
 <p align="center">
   <img src="docs/images/lcd-hwmon-gauge.jpg" alt="The motherboard LCD showing live Linux sensor values in the gauge theme" height="420">
@@ -73,6 +73,24 @@ cd z890-lcd-unleashed
 
 The udev rule (`data/70-z890-lcd.rules`) gives the logged-in user access to the LCD; without it only
 root can talk to the panel.
+
+### Windows
+
+Download `z890-lcd-unleashed-<version>-windows-setup.exe` from the releases page and run it. It installs
+the app, a Start menu entry and (optionally) starts the background service when you sign in.
+
+* **Hardware sensors:** install [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor),
+  run it as administrator and turn on *Options → Remote Web Server → Run* (port 8085). Z890 LCD Unleashed
+  then offers every temperature, fan, voltage and clock it reports. Without it you still get CPU load, RAM,
+  disk, network, NVIDIA GPU, clock, text and command values.
+* **Uploading your own pictures** uses the LCD's second USB interface, which needs the WinUSB driver.
+  If Armoury Crate was never installed: run [Zadig](https://zadig.akeo.ie/), choose *Options → List All
+  Devices*, pick **Motherboard LCD Panel (Interface 0)** – *not* Interface 1 – select **WinUSB** and press
+  *Replace Driver*. Everything else (wallpapers, brightness, stats) works without it.
+* **Armoury Crate:** don't let both control the LCD at the same time – uninstall Armoury Crate or disable
+  its LCD feature, otherwise they overwrite each other.
+
+The settings live in `%APPDATA%\z890-lcd`, the service log in `%LOCALAPPDATA%\z890-lcd\service.log`.
 
 ## Use
 

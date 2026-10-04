@@ -4,11 +4,11 @@ Protocol reverse-engineered from Armoury Crate 6.5.14.0 USB captures (see docs/P
   * HID interface 1, 65-byte reports: report ID 0xEC = command/response, 0xEE = async status
   * Bulk endpoint 0x02 on interface 0 carries uploaded file data (raw JPEG)
 """
-import glob
 import os
-import select
 import struct
 import time
+
+from .transport import NotFound, TransportError, open_transport, usb_backend
 
 VID, PID = 0x0B05, 0x1BD4
 WIDTH, HEIGHT = 720, 1280
@@ -47,38 +47,22 @@ class DeviceNotFound(LCDError):
     pass
 
 
-def find_hidraw():
-    for dev in sorted(glob.glob('/sys/class/hidraw/hidraw*')):
-        try:
-            with open(os.path.join(dev, 'device/uevent')) as f:
-                uevent = f.read()
-        except OSError:
-            continue
-        if f'HID_ID=0003:{VID:08X}:{PID:08X}' in uevent:
-            return '/dev/' + os.path.basename(dev)
-    return None
-
-
 class LCD:
     """One open connection to the panel. Not thread-safe; use from one thread."""
 
     def __init__(self, verbose=False):
         self.verbose = verbose
-        path = find_hidraw()
-        if not path:
-            raise DeviceNotFound('ROG motherboard LCD (0b05:1bd4) not found')
         try:
-            self.fd = os.open(path, os.O_RDWR)
-        except PermissionError as e:
-            raise LCDError(f'no permission for {path}: install the udev rule (data/70-z890-lcd.rules)') from e
-        self.path = path
+            self.hid = open_transport(VID, PID)
+        except NotFound as e:
+            raise DeviceNotFound(str(e)) from e
+        except TransportError as e:
+            raise LCDError(str(e)) from e
+        self.path = self.hid.path
         self._usb = None
 
     def close(self):
-        try:
-            os.close(self.fd)
-        except OSError:
-            pass
+        self.hid.close()
         if self._usb is not None:
             try:
                 import usb.util
@@ -96,10 +80,9 @@ class LCD:
 
     # ---- transport ----
     def _read(self, timeout):
-        r, _, _ = select.select([self.fd], [], [], max(0, timeout))
-        if not r:
+        data = self.hid.read(timeout)
+        if data is None:
             return None
-        data = os.read(self.fd, 65)
         if self.verbose:
             print('  <-', data.rstrip(b'\0').hex(' '))
         return data
@@ -109,7 +92,7 @@ class LCD:
         pkt = bytes([0xEC, *payload])
         if self.verbose:
             print('  ->', pkt.hex(' '))
-        os.write(self.fd, pkt + bytes(65 - len(pkt)))
+        self.hid.write(pkt + bytes(65 - len(pkt)))
         want = {0x82: 0x02, 0xDC: 0x5C, 0xF1: 0x71}.get(payload[0], payload[0])  # read cmds reply with another id
         end = time.monotonic() + timeout
         while time.monotonic() < end:
@@ -228,7 +211,7 @@ class LCD:
         if self._usb is None:
             import usb.core
             import usb.util
-            dev = usb.core.find(idVendor=VID, idProduct=PID)
+            dev = usb.core.find(idVendor=VID, idProduct=PID, backend=usb_backend())
             if dev is None:
                 raise DeviceNotFound('USB device vanished')
             try:
@@ -236,7 +219,13 @@ class LCD:
                     dev.detach_kernel_driver(0)
             except (NotImplementedError, usb.core.USBError):
                 pass
-            usb.util.claim_interface(dev, 0)
+            try:
+                usb.util.claim_interface(dev, 0)
+            except usb.core.USBError as e:
+                if os.name == 'nt':
+                    raise LCDError('image uploads need the WinUSB driver on the LCD\'s "Interface 0" '
+                                   '(install it with Zadig, see the README)') from e
+                raise
             self._usb = dev
         return self._usb
 

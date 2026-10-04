@@ -10,6 +10,9 @@ import time
 
 from .protocol import UNIT_GLYPHS
 
+WINDOWS = os.name == 'nt'
+NO_WINDOW = 0x08000000 if WINDOWS else 0  # don't flash a console window for helper processes
+
 DEFAULT_DECIMALS = {'°C': 1, 'V': 3, 'RPM': 0, 'GHz': 2, 'MHz': 0, '%': 0, 'W': 0, 'A': 2,
                     'MB/s': 1, 'GB': 1, 'MB': 0}
 
@@ -63,6 +66,7 @@ class SensorHub:
         self.sources = {}
         self._rates = {}
         self._gpu_cache = (0.0, [])
+        self.lhm = LibreHardwareMonitor()
         self.discover()
 
     # ------------------------------------------------------------------ discovery
@@ -72,6 +76,38 @@ class SensorHub:
         def add(id, name, category, unit, reader):
             s[id] = Source(id, name, category, unit, reader)
 
+        if WINDOWS:
+            self._discover_windows(add)
+        else:
+            self._discover_linux(add)
+
+        # NVIDIA GPUs
+        if shutil.which('nvidia-smi'):
+            for i, gpu in enumerate(self._nvidia()):
+                n = f'GPU {i}' if i else 'GPU'
+                add(f'nvidia:{i}:temp', f'{n} temperature ({gpu["name"]})', 'Temperature', '°C',
+                    lambda i=i: self._nvidia()[i]['temp'])
+                add(f'nvidia:{i}:load', f'{n} load', 'Load', '%', lambda i=i: self._nvidia()[i]['load'])
+                add(f'nvidia:{i}:power', f'{n} power', 'Power', 'W', lambda i=i: self._nvidia()[i]['power'])
+                add(f'nvidia:{i}:clock', f'{n} clock', 'Frequency', 'GHz',
+                    lambda i=i: self._nvidia()[i]['clock'] / 1000)
+                add(f'nvidia:{i}:mem', f'{n} memory used', 'Memory', 'GB',
+                    lambda i=i: self._nvidia()[i]['mem'] / 1024)
+                add(f'nvidia:{i}:fan', f'{n} fan', 'Fan', '%', lambda i=i: self._nvidia()[i]['fan'])
+
+        # time
+        add('time:clock', 'Clock (HH:MM)', 'Time', '', lambda: time.strftime('%H:%M'))
+        add('time:clock12', 'Clock (12 h)', 'Time', '', lambda: time.strftime('%I:%M %p').lstrip('0'))
+        add('time:date', 'Date', 'Time', '', lambda: time.strftime('%d %b'))
+        add('time:uptime', 'Uptime', 'Time', '', self._uptime)
+
+        # custom (value comes from the row's `param`)
+        add('custom:text', 'Custom text', 'Custom', '', lambda: '')
+        add('custom:command', 'Shell command output', 'Custom', '', lambda: '')
+        self.sources = s
+        return s
+
+    def _discover_linux(self, add):
         # CPU basics
         add('cpu:load', 'CPU load', 'Load', '%', self._cpu_load)
         add('cpu:freq_max', 'CPU frequency (fastest core)', 'Frequency', 'GHz', lambda: self._cpu_freq(max))
@@ -110,20 +146,6 @@ class SensorHub:
                 add(sid, f'{pretty}: {label}', category, unit,
                     lambda p=inp, d=div: _read_int(p) / d)
 
-        # NVIDIA GPUs
-        if shutil.which('nvidia-smi'):
-            for i, gpu in enumerate(self._nvidia()):
-                n = f'GPU {i}' if i else 'GPU'
-                add(f'nvidia:{i}:temp', f'{n} temperature ({gpu["name"]})', 'Temperature', '°C',
-                    lambda i=i: self._nvidia()[i]['temp'])
-                add(f'nvidia:{i}:load', f'{n} load', 'Load', '%', lambda i=i: self._nvidia()[i]['load'])
-                add(f'nvidia:{i}:power', f'{n} power', 'Power', 'W', lambda i=i: self._nvidia()[i]['power'])
-                add(f'nvidia:{i}:clock', f'{n} clock', 'Frequency', 'GHz',
-                    lambda i=i: self._nvidia()[i]['clock'] / 1000)
-                add(f'nvidia:{i}:mem', f'{n} memory used', 'Memory', 'GB',
-                    lambda i=i: self._nvidia()[i]['mem'] / 1024)
-                add(f'nvidia:{i}:fan', f'{n} fan', 'Fan', '%', lambda i=i: self._nvidia()[i]['fan'])
-
         # network
         for iface in self._net_ifaces():
             add(f'net:{iface}:rx', f'Network {iface} download', 'Network', 'MB/s',
@@ -138,17 +160,45 @@ class SensorHub:
             add(f'disk:{blk}:read', f'Disk {blk} read', 'Disk', 'MB/s', lambda b=blk: self._disk_rate(b, 0))
             add(f'disk:{blk}:write', f'Disk {blk} write', 'Disk', 'MB/s', lambda b=blk: self._disk_rate(b, 1))
 
-        # time
-        add('time:clock', 'Clock (HH:MM)', 'Time', '', lambda: time.strftime('%H:%M'))
-        add('time:clock12', 'Clock (12 h)', 'Time', '', lambda: time.strftime('%I:%M %p').lstrip('0'))
-        add('time:date', 'Date', 'Time', '', lambda: time.strftime('%d %b'))
-        add('time:uptime', 'Uptime', 'Time', '', self._uptime)
 
-        # custom (value comes from the row's `param`)
-        add('custom:text', 'Custom text', 'Custom', '', lambda: '')
-        add('custom:command', 'Shell command output', 'Custom', '', lambda: '')
-        self.sources = s
-        return s
+    def _discover_windows(self, add):
+        import psutil
+        psutil.cpu_percent(None)
+        add('cpu:load', 'CPU load', 'Load', '%', lambda: psutil.cpu_percent(None))
+        add('mem:used', 'RAM used', 'Memory', 'GB', lambda: psutil.virtual_memory().used / 1024 ** 3)
+        add('mem:percent', 'RAM used', 'Memory', '%', lambda: psutil.virtual_memory().percent)
+        add('mem:swap', 'Page file used', 'Memory', '%', lambda: psutil.swap_memory().percent)
+        for nic in sorted(psutil.net_io_counters(pernic=True)):
+            if nic.lower().startswith(('loopback', 'vethernet', 'isatap', 'teredo')):
+                continue
+            add(f'net:{nic}:rx', f'Network {nic} download', 'Network', 'MB/s',
+                lambda n=nic: self._counter_rate(f'net:{n}:rx', psutil.net_io_counters(pernic=True)[n].bytes_recv) / 1e6)
+            add(f'net:{nic}:tx', f'Network {nic} upload', 'Network', 'MB/s',
+                lambda n=nic: self._counter_rate(f'net:{n}:tx', psutil.net_io_counters(pernic=True)[n].bytes_sent) / 1e6)
+        drive = os.environ.get('SystemDrive', 'C:') + '\\'
+        add('disk:root_used', f'Disk {drive} used', 'Disk', '%', lambda: psutil.disk_usage(drive).percent)
+        add('disk:root_free', f'Disk {drive} free', 'Disk', 'GB', lambda: psutil.disk_usage(drive).free / 1e9)
+        for disk in sorted((psutil.disk_io_counters(perdisk=True) or {})):
+            add(f'disk:{disk}:read', f'Disk {disk} read', 'Disk', 'MB/s',
+                lambda d=disk: self._counter_rate(f'disk:{d}:r', psutil.disk_io_counters(perdisk=True)[d].read_bytes) / 1e6)
+            add(f'disk:{disk}:write', f'Disk {disk} write', 'Disk', 'MB/s',
+                lambda d=disk: self._counter_rate(f'disk:{d}:w', psutil.disk_io_counters(perdisk=True)[d].write_bytes) / 1e6)
+
+        # Full hardware sensors come from LibreHardwareMonitor's web server, if it is running
+        cpu_temp = None
+        for sid, (name, category, unit) in self.lhm.sensors().items():
+            add(sid, name, category, unit, lambda i=sid: self.lhm.value(i))
+            if category == 'Temperature' and cpu_temp is None and ('CPU Package' in name or 'Core (Tctl/Tdie)' in name):
+                cpu_temp = sid
+        if cpu_temp:
+            add('cpu:temp', 'CPU temperature', 'Temperature', '°C', lambda i=cpu_temp: self.lhm.value(i))
+            clocks = [i for i, (n, c, u) in self.lhm.sensors().items() if c == 'Frequency' and 'Core #' in n
+                      and n.startswith(self.lhm.sensors()[cpu_temp][0].split(':')[0])]
+            if clocks:
+                add('cpu:freq_max', 'CPU frequency (fastest core)', 'Frequency', 'GHz',
+                    lambda c=clocks: max(self.lhm.value(i) or 0 for i in c) / 1000)
+        else:
+            add('cpu:freq_max', 'CPU frequency', 'Frequency', 'GHz', lambda: psutil.cpu_freq().current / 1000)
 
     def list(self):
         order = {c: i for i, c in enumerate(CATEGORY_ORDER)}
@@ -163,7 +213,8 @@ class SensorHub:
             if not param:
                 return ''
             try:
-                out = subprocess.run(param, shell=True, capture_output=True, text=True, timeout=3).stdout
+                out = subprocess.run(param, shell=True, capture_output=True, text=True, timeout=3,
+                                     creationflags=NO_WINDOW).stdout
                 return out.strip().splitlines()[0] if out.strip() else ''
             except (subprocess.TimeoutExpired, OSError):
                 return '?'
@@ -254,7 +305,7 @@ class SensorHub:
         data = []
         try:
             out = subprocess.run(['nvidia-smi', f'--query-gpu={q}', '--format=csv,noheader,nounits'],
-                                 capture_output=True, text=True, timeout=3).stdout
+                                 capture_output=True, text=True, timeout=3, creationflags=NO_WINDOW).stdout
             for line in out.strip().splitlines():
                 f = [x.strip() for x in line.split(',')]
 
@@ -316,8 +367,87 @@ class SensorHub:
 
     @staticmethod
     def _uptime():
-        with open('/proc/uptime') as f:
-            secs = int(float(f.read().split()[0]))
+        if WINDOWS:
+            import psutil
+            secs = int(time.time() - psutil.boot_time())
+        else:
+            with open('/proc/uptime') as f:
+                secs = int(float(f.read().split()[0]))
         d, rem = divmod(secs, 86400)
         h, m = divmod(rem // 60, 60)
         return f'{d}d {h}h' if d else f'{h}h {m:02d}m'
+
+
+LHM_GROUPS = {  # LibreHardwareMonitor sensor group -> our category
+    'Temperatures': 'Temperature', 'Voltages': 'Voltage', 'Fans': 'Fan', 'Controls': 'Fan', 'Clocks': 'Frequency',
+    'Load': 'Load', 'Powers': 'Power', 'Currents': 'Current', 'Data': 'Memory', 'SmallData': 'Memory',
+    'Throughput': 'Network',
+}
+
+
+class LibreHardwareMonitor:
+    """Reads sensors from LibreHardwareMonitor's built-in web server (Options -> Remote Web Server -> Run).
+
+    LibreHardwareMonitor runs as administrator and loads its own driver, so this program doesn't have to.
+    URL: Z890LCD_LHM_URL, default http://127.0.0.1:8085/data.json
+    """
+
+    def __init__(self, url=None):
+        self.url = url or os.environ.get('Z890LCD_LHM_URL', 'http://127.0.0.1:8085/data.json')
+        self._cache = (0.0, {}, {})  # time, meta, values
+
+    def _fetch(self):
+        t, meta, values = self._cache
+        if time.monotonic() - t < 1.0:
+            return meta, values
+        meta, values = {}, {}
+        if WINDOWS or os.environ.get('Z890LCD_LHM_URL'):
+            try:
+                import json
+                import urllib.request
+                with urllib.request.urlopen(self.url, timeout=1.5) as r:
+                    meta, values = self.parse(json.load(r))
+            except (OSError, ValueError):
+                pass
+        self._cache = (time.monotonic(), meta, values)
+        return meta, values
+
+    @staticmethod
+    def parse(tree):
+        """data.json -> ({id: (name, category, unit)}, {id: value})"""
+        meta, values = {}, {}
+
+        def walk(node, hardware, group, path):
+            children = node.get('Children') or []
+            text = node.get('Text', '')
+            if not children and group in LHM_GROUPS and node.get('Value'):
+                num, unit = _split_value(node['Value'])
+                if num is None:
+                    return
+                sid = 'lhm:' + (node.get('SensorId') or '/'.join(path + [text]))
+                meta[sid] = (f'{hardware}: {text}', LHM_GROUPS[group], unit)
+                values[sid] = num
+                return
+            for c in children:
+                is_group = c.get('Text') in LHM_GROUPS and c.get('Children')
+                walk(c, hardware if is_group or not c.get('Children') else (c.get('Text') or hardware),
+                     c.get('Text') if is_group else group, path + [text])
+
+        walk(tree, '', '', [])
+        return meta, values
+
+    def sensors(self):
+        return self._fetch()[0]
+
+    def value(self, sid):
+        return self._fetch()[1].get(sid)
+
+
+def _split_value(text):
+    """'45.0 °C' -> (45.0, '°C'); '1,250 RPM' -> (1250.0, 'RPM')."""
+    text = text.strip().replace('\u00a0', ' ')
+    num, _, unit = text.partition(' ')
+    try:
+        return float(num.replace(',', '')), unit.strip()
+    except ValueError:
+        return None, ''

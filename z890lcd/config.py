@@ -5,8 +5,13 @@ import os
 
 from .protocol import JPEG_SLOTS, PRESETS
 
-CONFIG_DIR = os.path.join(os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config')), 'z890-lcd')
-DATA_DIR = os.path.join(os.environ.get('XDG_DATA_HOME', os.path.expanduser('~/.local/share')), 'z890-lcd')
+IS_WINDOWS = os.name == 'nt'
+if IS_WINDOWS:
+    CONFIG_DIR = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'z890-lcd')
+    DATA_DIR = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'z890-lcd')
+else:
+    CONFIG_DIR = os.path.join(os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config')), 'z890-lcd')
+    DATA_DIR = os.path.join(os.environ.get('XDG_DATA_HOME', os.path.expanduser('~/.local/share')), 'z890-lcd')
 CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
 IMAGE_DIR = os.path.join(DATA_DIR, 'images')
 

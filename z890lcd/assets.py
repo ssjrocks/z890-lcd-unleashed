@@ -48,7 +48,9 @@ def _existing(stem):
 
 
 def _mount_points():
-    """Mounted filesystems that could hold a Windows installation."""
+    """Mounted filesystems that could hold a Windows installation (drive letters on Windows)."""
+    if os.name == 'nt':
+        return [f'{d}:\\' for d in 'CDEFGHIJKLMNOPQRSTUVWXYZ' if os.path.exists(f'{d}:\\')]
     points = []
     try:
         with open('/proc/self/mounts') as f:

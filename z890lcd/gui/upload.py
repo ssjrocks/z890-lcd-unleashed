@@ -1,5 +1,4 @@
 """Upload dialog: choose how a picture is fitted to the 720x1280 screen, preview it, send it."""
-import json
 import os
 
 import gi
@@ -87,8 +86,8 @@ class UploadDialog(Adw.Dialog):
         body.append(right)
         toolbar.set_content(body)
         self.set_child(toolbar)
-        self._sig = window.client.proxy.connect('g-signal', self._on_signal)
-        self.connect('closed', lambda *a: window.client.proxy.disconnect(self._sig))
+        self._sig = window.client.on_signal(self._on_signal)
+        self.connect('closed', lambda *a: window.client.off_signal(self._sig))
         self._changed()
 
     def _scale_row(self, group, title, lo, hi, val, step):
@@ -131,9 +130,9 @@ class UploadDialog(Adw.Dialog):
             self.window.toast(f'Cannot open image: {e}')
             self.close()
 
-    def _on_signal(self, proxy, sender, name, params):
+    def _on_signal(self, name, args):
         if name == 'UploadProgress' and self._uploading:
-            frac = params.unpack()[1]
+            frac = args[1]
             self.progress.set_fraction(frac)
             self.progress.set_text(f'Uploading… {frac * 100:.0f}%')
 
@@ -152,6 +151,6 @@ class UploadDialog(Adw.Dialog):
                 self.progress.set_visible(False)
                 self.window.toast(f'Upload failed: {err}')
                 return
-            self.window.toast(f'Uploaded to slot {res[0] + 1}')
+            self.window.toast(f'Uploaded to slot {res + 1}')
             self.close()
-        self.window.client.call_async('UploadImage', '(ss)', (self.path, json.dumps(opts)), done, 600_000)
+        self.window.client.call_async('UploadImage', [self.path, opts], done)

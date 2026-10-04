@@ -1,6 +1,5 @@
 """Hardware-monitor editor: theme, rows (label + sensor + formatting) and a live layout preview."""
 import copy
-import json
 import math
 import time
 
@@ -311,9 +310,9 @@ class StatsPage(Adw.Bin):
 
         def done(res, err):
             if res:
-                vals = json.loads(res[0])
+                vals = res
                 for v in vals:
                     v['unit'] = GLYPH_BACK.get(v['unit'], v['unit'])
                 self.preview.update(self.hw['theme'], vals)
-        self.window.client.call_async('PreviewRows', '(s)', (json.dumps(self.hw['rows']),), done, 10_000)
+        self.window.client.call_async('PreviewRows', [self.hw['rows']], done)
         return True
