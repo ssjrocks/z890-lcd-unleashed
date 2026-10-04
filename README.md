@@ -35,10 +35,10 @@ no Windows.
 ### On the LCD
 
 <p align="center">
-  <img src="docs/images/lcd-hwmon-theme1.jpg" alt="Theme 1 with GPU, CPU and fan values" height="300">
-  <img src="docs/images/lcd-custom-image.jpg" alt="A custom picture uploaded from Linux, shown in the case" height="300">
-  <img src="docs/images/lcd-wallpaper.jpg" alt="A built-in ROG wallpaper" height="300">
-  <img src="docs/images/lcd-neon-animation.jpg" alt="The built-in neon ROG animation" height="300">
+  <img src="docs/images/lcd-hwmon-theme1.jpg" alt="Theme 1 with GPU, CPU and fan values" height="250">
+  <img src="docs/images/lcd-custom-image.jpg" alt="A custom picture uploaded from Linux, shown in the case" height="250">
+  <img src="docs/images/lcd-wallpaper.jpg" alt="A built-in ROG wallpaper" height="250">
+  <img src="docs/images/lcd-neon-animation.jpg" alt="The built-in neon ROG animation" height="250">
 </p>
 
 Phone photos of the real panel: hardware monitor theme 1, a picture uploaded from Linux, a built-in
