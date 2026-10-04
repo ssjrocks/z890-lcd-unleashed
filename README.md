@@ -3,6 +3,12 @@
 Control the 5" LCD on the **ASUS ROG MAXIMUS Z890 EXTREME** motherboard from Linux – no Armoury Crate,
 no Windows.
 
+<p align="center">
+  <img src="docs/images/lcd-hwmon-gauge.jpg" alt="The motherboard LCD showing live Linux sensor values in the gauge theme" height="420">
+  &nbsp;
+  <img src="docs/images/app-hwmon.png" alt="The Hardware Monitor page of the app" height="420">
+</p>
+
 * **Built-in wallpapers** – the 2 animations and 6 pictures stored on the panel.
 * **Your own pictures** – any format, cropped or fitted to the 720 × 1280 portrait screen with a live
   preview; 8 slots on the panel.
@@ -16,6 +22,27 @@ no Windows.
 
 > Not affiliated with or endorsed by ASUS. "ROG" and "Armoury Crate" are trademarks of ASUSTeK.
 > Tested with panel firmware 0107.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Display page: on/off, brightness and built-in wallpapers](docs/images/app-display.png) | ![My Images page with an uploaded picture](docs/images/app-images.png) |
+| **Display** – power, brightness, built-in wallpapers | **My Images** – 8 slots on the panel, slideshow |
+| ![Upload dialog with a live 720 × 1280 preview](docs/images/app-upload.png) | ![Settings page](docs/images/app-settings.png) |
+| **Upload** – crop, fit, zoom and rotate with a live preview | **Settings** – sleep display, temperature warning, autostart |
+
+### On the LCD
+
+<p align="center">
+  <img src="docs/images/lcd-hwmon-theme1.jpg" alt="Theme 1 with GPU, CPU and fan values" height="300">
+  <img src="docs/images/lcd-custom-image.jpg" alt="A custom picture uploaded from Linux, shown in the case" height="300">
+  <img src="docs/images/lcd-wallpaper.jpg" alt="A built-in ROG wallpaper" height="300">
+  <img src="docs/images/lcd-neon-animation.jpg" alt="The built-in neon ROG animation" height="300">
+</p>
+
+Phone photos of the real panel: hardware monitor theme 1, a picture uploaded from Linux, a built-in
+wallpaper and the neon ROG animation. More in [docs/screenshots.md](docs/screenshots.md).
 
 ## Install
 

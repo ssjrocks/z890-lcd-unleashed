@@ -149,6 +149,8 @@ class ImagesPage(Adw.PreferencesPage):
             pic = Gtk.Picture.new_for_filename(thumb)
             pic.set_content_fit(Gtk.ContentFit.COVER)
             pic.set_size_request(108, 192)
+            pic.set_halign(Gtk.Align.CENTER)
+            pic.set_can_shrink(True)
             box.append(pic)
         else:
             ph = Gtk.Box(css_classes=['slot-empty'], width_request=108, height_request=192,

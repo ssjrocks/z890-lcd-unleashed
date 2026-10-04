@@ -75,6 +75,14 @@ off  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16
 
 ### Hardware monitor (`EC 52` / `EC 53`)
 
+<p>
+  <img src="images/lcd-hwmon-theme1.jpg" alt="Theme 1, three rows" height="320">
+  <img src="images/lcd-hwmon-gauge.jpg" alt="Theme 4, five values" height="320">
+</p>
+
+Theme 1 with three rows (slot 1 top, slot 0 middle, slot 2 bottom) and theme 4 with five values
+(slot 0 in the gauge).
+
 * Themes 1–3 support 1–3 rows, theme 4 (gauge) 1–5.
 * `EC 53`: byte 2 = slot, bytes 3–20 = label (UTF-8, NUL-padded, max 17 chars), from byte 21 the value
   (UTF-8). The panel just draws text; the PC sends new values every few seconds.
