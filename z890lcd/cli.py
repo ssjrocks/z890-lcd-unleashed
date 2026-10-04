@@ -42,6 +42,9 @@ def main(argv=None):
     s = sub.add_parser('standby', help='LCD while the PC sleeps / is off')
     s.add_argument('state', choices=['on', 'off'])
     s.add_argument('--wallpaper', type=int, choices=[1, 2])
+    s = sub.add_parser('import-previews', help='copy wallpaper/theme previews from an Armoury Crate install '
+                                               '(searches mounted drives, or give a folder)')
+    s.add_argument('folder', nargs='?')
     sub.add_parser('gui', help='open the settings window')
     sub.add_parser('service', help='run the background service in the foreground')
     a = p.parse_args(argv)
@@ -52,6 +55,16 @@ def main(argv=None):
     if a.cmd == 'service':
         from .service import main as service_main
         return service_main()
+
+    if a.cmd == 'import-previews':
+        from . import assets
+        dirs = assets.find_asset_dirs([a.folder] if a.folder else [])
+        if not dirs:
+            print('Armoury Crate LCD pictures not found. Mount the Windows drive (open it in Files) or pass the '
+                  'folder.', file=sys.stderr)
+            return 1
+        print(f'imported {assets.import_from(dirs[0])} previews from {dirs[0]}')
+        return 0
 
     from .client import Client, ServiceError
     try:

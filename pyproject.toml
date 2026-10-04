@@ -27,5 +27,8 @@ z890-lcd-gui = "z890lcd.gui:main"
 [tool.setuptools]
 packages = ["z890lcd", "z890lcd.gui"]
 
+[tool.setuptools.package-data]
+z890lcd = ["previews/*"]
+
 [tool.setuptools.dynamic]
 version = {attr = "z890lcd.__version__"}

@@ -13,7 +13,8 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 from .. import APP_ID, __version__  # noqa: E402
 from ..client import Client, ServiceError  # noqa: E402
 from ..protocol import JPEG_SLOTS, PRESETS, TYPE_ANIM  # noqa: E402
-from .common import debounce, install_css, source_label, string_dropdown  # noqa: E402
+from .. import assets  # noqa: E402
+from .common import AnimatedPicture, debounce, install_css, source_label, string_dropdown  # noqa: E402
 from .stats import StatsPage  # noqa: E402
 from .upload import UploadDialog  # noqa: E402
 
@@ -42,21 +43,38 @@ class DisplayPage(Adw.PreferencesPage):
         self.add(g)
 
         g = Adw.PreferencesGroup(title='Built-in wallpapers', description='Stored on the panel')
+        self.import_btn = Gtk.Button(label='Import previews…', css_classes=['flat'], valign=Gtk.Align.CENTER,
+                                     tooltip_text='Show the real pictures, copied from an Armoury Crate install')
+        self.import_btn.connect('clicked', lambda *a: import_previews(win))
+        g.set_header_suffix(self.import_btn)
         flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=4, min_children_per_line=2,
                            row_spacing=10, column_spacing=10, homogeneous=True)
-        self.preset_btns = {}
+        self.preset_btns, self.preset_pics, self.preset_icons = {}, {}, {}
         for n, (name, typ, _) in PRESETS.items():
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-            box.append(Gtk.Image(icon_name='media-playback-start-symbolic' if typ == TYPE_ANIM
-                                 else 'image-x-generic-symbolic', pixel_size=28))
+            pic = AnimatedPicture(content_fit=Gtk.ContentFit.COVER, width_request=108, height_request=192,
+                                  halign=Gtk.Align.CENTER, can_shrink=True, css_classes=['preset-thumb'])
+            icon = Gtk.Image(icon_name='media-playback-start-symbolic' if typ == TYPE_ANIM
+                             else 'image-x-generic-symbolic', pixel_size=28)
+            box.append(pic)
+            box.append(icon)
             box.append(Gtk.Label(label=f'{n}. {name}', wrap=True, justify=Gtk.Justification.CENTER,
                                  max_width_chars=14))
             b = Gtk.Button(child=box, css_classes=['card', 'preset-card'])
             b.connect('clicked', lambda *a, n=n: win.set_config(mode='preset', preset=n))
             flow.append(b)
-            self.preset_btns[n] = b
+            self.preset_btns[n], self.preset_pics[n], self.preset_icons[n] = b, pic, icon
         g.add(flow)
         self.add(g)
+        self.load_previews()
+
+    def load_previews(self):
+        for n, pic in self.preset_pics.items():
+            path = assets.preset_preview(n)
+            pic.load(path, (108, 192))  # card-sized frames keep 4 cards per row
+            pic.set_visible(bool(path))
+            self.preset_icons[n].set_visible(not path)
+        self.import_btn.set_visible(not assets.have_previews())
 
     def _on_bright(self, scale):
         if not self.win.loading:
@@ -312,6 +330,46 @@ class SettingsPage(Adw.PreferencesPage):
             self.warn_src.set_selected(ids.index(tw['source']))
         self.dev.set_subtitle('Connected' if st['connected'] else f'Not connected: {st["error"]}')
         self.fw.set_subtitle(st.get('firmware') or '—')
+
+
+def import_previews(win, folder=None):
+    """Find Armoury Crate's artwork (mounted Windows drive or a chosen folder) and import the previews."""
+    dirs = assets.find_asset_dirs([folder] if folder else [])
+    if dirs:
+        n = assets.import_from(dirs[0])
+        win.display.load_previews()
+        win.stats.load_previews()
+        win.toast(f'Imported {n} previews from Armoury Crate')
+        return
+    if folder:
+        win.toast('No Armoury Crate LCD pictures found in that folder')
+        return
+    d = Adw.AlertDialog(
+        heading='Import previews from Armoury Crate',
+        body='The built-in pictures belong to ASUS, so they can\'t be shipped with this app. They can be copied '
+             'from an Armoury Crate installation instead.\n\nIf Windows with Armoury Crate is on another drive of '
+             'this PC, open that drive in Files so it is mounted, then press "Search again". Otherwise choose the '
+             'Windows drive or the Armoury Crate folder yourself.')
+    d.add_response('cancel', 'Cancel')
+    d.add_response('folder', 'Choose folder…')
+    d.add_response('search', 'Search again')
+    d.set_response_appearance('search', Adw.ResponseAppearance.SUGGESTED)
+
+    def chosen(dlg, res):
+        try:
+            f = dlg.select_folder_finish(res)
+        except GLib.Error:
+            return
+        if f and f.get_path():
+            import_previews(win, f.get_path())
+
+    def respond(_d, r):
+        if r == 'search':
+            import_previews(win)
+        elif r == 'folder':
+            Gtk.FileDialog(title='Windows drive or Armoury Crate folder').select_folder(win, None, chosen)
+    d.connect('response', respond)
+    d.present(win)
 
 
 class Window(Adw.ApplicationWindow):

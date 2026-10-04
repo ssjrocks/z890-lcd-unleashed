@@ -21,6 +21,9 @@ def snap(widget):
     snapshot = Gtk.Snapshot()
     Gtk.WidgetPaintable.new(widget).snapshot(snapshot, w, h)
     node = snapshot.to_node()
+    if node is None:
+        print('nothing rendered yet', w, h)
+        return
     tex = widget.get_native().get_renderer().render_texture(node, Graphene.Rect().init(0, 0, w, h))
     tex.save_to_png(out)
     print('saved', out, w, h)

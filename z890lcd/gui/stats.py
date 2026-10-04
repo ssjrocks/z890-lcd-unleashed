@@ -11,7 +11,8 @@ gi.require_version('Adw', '1')
 from gi.repository import Adw, GLib, Gtk, Pango, PangoCairo  # noqa: E402
 
 from ..config import MAX_ROWS  # noqa: E402
-from .common import debounce, source_label, string_dropdown  # noqa: E402
+from .. import assets  # noqa: E402
+from .common import AnimatedPicture, debounce, source_label, string_dropdown  # noqa: E402
 
 THEMES = ['1 · ROG logo', '2 · Light streaks', '3 · Starfield', '4 · Gauge (up to 5 values)']
 DECIMALS = [('Auto', -1), ('0', 0), ('1', 1), ('2', 2), ('3', 3)]
@@ -37,6 +38,7 @@ class LayoutPreview(Gtk.DrawingArea):
     def __init__(self):
         super().__init__(content_width=243, content_height=432)
         self.theme, self.rows = 1, []
+        self.has_background = False  # True when the real theme artwork is shown underneath
         self.set_draw_func(self._draw)
 
     def update(self, theme, rows):
@@ -56,13 +58,14 @@ class LayoutPreview(Gtk.DrawingArea):
     def _draw(self, area, cr, width, height):
         w, h = 243, 432
         cr.translate((width - w) / 2, (height - h) / 2)
-        cr.rectangle(0, 0, w, h)
-        cr.set_source_rgb(0.03, 0.03, 0.08)
-        cr.fill()
+        if not self.has_background:
+            cr.rectangle(0, 0, w, h)
+            cr.set_source_rgb(0.03, 0.03, 0.08)
+            cr.fill()
         rows = [(r['label'], r['text'] + r['unit']) for r in self.rows]
         if not rows:
             return
-        if self.theme == 4:
+        if self.theme == 4 and not self.has_background:
             cr.set_source_rgba(1, 1, 1, 0.25)
             cr.set_line_width(3)
             cr.arc(w / 2, h / 2, 78, 0, 2 * math.pi)
@@ -70,6 +73,7 @@ class LayoutPreview(Gtk.DrawingArea):
             cr.set_source_rgba(*self.PINK, 0.8)
             cr.arc(w / 2, h / 2, 86, math.pi * 0.75, math.pi * 1.1)
             cr.stroke()
+        if self.theme == 4:
             label, val = rows[0]
             self._text(cr, w / 2, h / 2 - 26, label, 11, (1, 1, 1), 'center')
             self._text(cr, w / 2, h / 2 + 8, val, 20, (1, 1, 1), 'center')
@@ -80,7 +84,8 @@ class LayoutPreview(Gtk.DrawingArea):
                 self._text(cr, x, y, val, 14, (1, 1, 1), al)
                 self._text(cr, x, y + 24, label, 9, self.PINK, al)
             return
-        self._text(cr, 12, 18, 'REPUBLIC OF GAMERS', 7, (1, 1, 1), bold=False)
+        if not self.has_background:
+            self._text(cr, 12, 18, 'REPUBLIC OF GAMERS', 7, (1, 1, 1), bold=False)
         order = {1: [0], 2: [0, 1], 3: [1, 0, 2]}[len(rows)]
         ys = {1: [h / 2], 2: [h * 0.33, h * 0.62], 3: [h * 0.24, h * 0.48, h * 0.72]}[len(rows)]
         for slot, y in zip(order, ys):
@@ -103,8 +108,14 @@ class StatsPage(Adw.Bin):
                         margin_start=18, margin_end=18)
         left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, valign=Gtk.Align.START)
         frame = Gtk.Box(css_classes=['lcd-frame'])
+        overlay = Gtk.Overlay()
+        self.background = AnimatedPicture(content_fit=Gtk.ContentFit.COVER, width_request=243, height_request=432,
+                                          can_shrink=True)
+        self._bg_theme = None
+        overlay.set_child(self.background)
         self.preview = LayoutPreview()
-        frame.append(self.preview)
+        overlay.add_overlay(self.preview)
+        frame.append(overlay)
         left.append(frame)
         left.append(Gtk.Label(label='Live values · approximate layout', css_classes=['dim-label', 'caption']))
         self.show_btn = Gtk.Button(label='Show on LCD', css_classes=['suggested-action', 'pill'],
@@ -158,7 +169,18 @@ class StatsPage(Adw.Bin):
         self.interval.set_value(self.hw['interval'])
         self._rebuild_rows()
         self._loading = False
+        self.load_previews()
         self._refresh_preview()
+
+    def load_previews(self, force=True):
+        theme = self.hw['theme'] if self.hw else 1
+        if self._bg_theme == theme and not force:
+            return
+        self._bg_theme = theme
+        path = assets.theme_preview(theme)
+        self.background.load(path, (243, 432))
+        self.preview.has_background = bool(path)
+        self.preview.queue_draw()
 
     def _rebuild_rows(self):
         loading, self._loading = self._loading, True  # building widgets must not count as edits
@@ -259,6 +281,7 @@ class StatsPage(Adw.Bin):
         self._collect()
         self.hw['rows'] = self.hw['rows'][:MAX_ROWS[self.hw['theme']]]
         self._rebuild_rows()
+        self.load_previews(force=False)
         self._edited()
 
     def _on_add(self, *a):

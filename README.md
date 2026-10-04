@@ -9,7 +9,8 @@ no Windows.
   <img src="docs/images/app-hwmon.png" alt="The Hardware Monitor page of the app" height="420">
 </p>
 
-* **Built-in wallpapers** – the 2 animations and 6 pictures stored on the panel.
+* **Built-in wallpapers** – the 2 animations and 6 pictures stored on the panel, with real thumbnails
+  and playing animation previews (imported from Armoury Crate if they aren't bundled).
 * **Your own pictures** – any format, cropped or fitted to the 720 × 1280 portrait screen with a live
   preview; 8 slots on the panel.
 * **Slideshows** of your pictures, in order or shuffled.
