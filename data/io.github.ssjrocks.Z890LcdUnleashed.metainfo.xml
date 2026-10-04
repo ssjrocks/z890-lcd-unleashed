@@ -15,6 +15,9 @@
   <url type="homepage">https://github.com/ssjrocks/z890-lcd-unleashed</url>
   <developer id="io.github.ssjrocks"><name>ssjrocks</name></developer>
   <provides><modalias>usb:v0B05p1BD4*</modalias></provides>
-  <releases><release version="0.1.0" date="2026-10-04"/></releases>
+  <releases>
+    <release version="0.2.0" date="2026-10-05" type="development"><description><p>Experimental: Windows support alongside Linux.</p></description></release>
+    <release version="0.1.0" date="2026-10-04"/>
+  </releases>
   <content_rating type="oars-1.1"/>
 </component>

@@ -21,6 +21,9 @@ Armoury Crate needed.
 * **Temperature warning** – switches to the panel's built-in warning screen when a sensor gets too hot.
 * A background service keeps everything running with the window closed, plus a `z890-lcd` CLI.
 
+> **0.2.0 is experimental.** It adds Windows support next to Linux; the Windows version is new and has had
+> little testing on real hardware. Please report problems in the issue tracker.
+>
 > Not affiliated with or endorsed by ASUS. "ROG" and "Armoury Crate" are trademarks of ASUSTeK.
 > Tested with panel firmware 0107.
 
@@ -52,7 +55,7 @@ wallpaper and the neon ROG animation. More in [docs/screenshots.md](docs/screens
 Download the `.deb` from the releases page, then:
 
 ```sh
-sudo apt install ./z890-lcd-unleashed_0.1.0_all.deb
+sudo apt install ./z890-lcd-unleashed_0.2.0_all.deb
 systemctl --user enable --now z890-lcd.service
 ```
 

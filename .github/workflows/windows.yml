@@ -2,8 +2,8 @@ name: Windows build
 
 on:
   workflow_dispatch:
-  pull_request:
   push:
+    branches: [main]
     tags: ['v*']
 
 permissions:
@@ -56,7 +56,7 @@ jobs:
       - name: Smoke test the bundle
         run: |
           ./dist/z890-lcd/z890-lcd.exe --version
-          ls dist/z890-lcd/*.dll | grep -iE "hidapi|libusb|gtk-4|adwaita"
+          ls dist/z890-lcd/_internal/*.dll | grep -iE "hidapi|libusb|gtk-4|adwaita"
 
       - name: Installer (Inno Setup)
         shell: pwsh
